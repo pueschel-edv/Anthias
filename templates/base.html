@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    {% include "head.html" %}
+
+    {% block head %}
+    {% endblock %}
+</head>
+
+<body>
+
+{% include 'header.html' %}
+
+{% block content %}
+{% endblock %}
+
+
+{% include 'footer.html' %}
+
+<script type="text/javascript">
+    $(".navbar .nav li a").removeClass('active');
+    $(".navbar .nav li a[href='" + window.location.pathname + "']").addClass('active');
+</script>
+
+</body>
+
+</html>
