@@ -26,6 +26,10 @@ from mimetypes import guess_type, guess_extension
 from os import getenv, makedirs, mkdir, path, remove, rename, statvfs, stat
 from urllib.parse import urlparse
 
+#### converter ####
+from PIL import Image
+###################
+
 from flask import (
     Flask,
     escape,
@@ -522,6 +526,34 @@ def remove_default_assets():
             if asset['asset_id'].startswith('default_'):
                 assets_helper.delete(conn, asset['asset_id'])
 
+
+def converter(uri, case):
+    # Öffne das Bild
+
+    if case == 1:
+        image = Image.open(uri)
+
+        image.thumbnail((1920, 1080))
+
+        background = Image.new('RGBA', (1920, 1080))
+
+        x = (1920 - image.width) // 2
+        y = (1080 - image.height) // 2
+        background.paste(image, (x, y))
+
+        background.save(f"{uri}.png")
+    else:
+        image = Image.open(uri)
+
+        image.thumbnail((1920, 1080))
+
+        background = Image.new('RGB', (1920, 1080))
+
+        x = (1920 - image.width) // 2
+        y = (1080 - image.height) // 2
+        background.paste(image, (x, y))
+
+        background.save(f"{uri}.jpg")
 
 def update_asset(asset, data):
     for key, value in list(data.items()):
@@ -1097,7 +1129,21 @@ class FileAsset(Resource):
         else:
             file_upload.save(file_path)
 
-        return {'uri': file_path, 'ext': guess_extension(file_type)}
+        if file_type.split('/')[0] in ['image']:
+            
+            if ".png" in filename:
+                converter(file_path, 1)
+                new_file_path = f'{file_path}.png'
+                new_extension = ".png"
+            else:
+                converter(file_path, 2)
+                new_file_path = f'{file_path}.jpg'
+                new_extension = ".jpg"
+        else:
+            new_file_path = file_path
+            new_extension = guess_extension(file_type)
+            
+        return {'uri': new_file_path, 'ext': new_extension}
 
 
 class PlaylistOrder(Resource):
@@ -1429,9 +1475,8 @@ def settings_page():
             current_pass = request.form.get('current-password', '')
             auth_backend = request.form.get('auth_backend', '')
 
-            if (
-                auth_backend != settings['auth_backend']
-                and settings['auth_backend']
+            if auth_backend != (
+                settings['auth_backend'] and settings['auth_backend']
             ):
                 if not current_pass:
                     raise ValueError(
