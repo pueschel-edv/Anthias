@@ -9,16 +9,36 @@ BRANCH="master"
 ANSIBLE_PLAYBOOK_ARGS=()
 REPOSITORY="https://github.com/pueschel-edv/Anthias.git"
 ANTHIAS_REPO_DIR="/home/${USER}/screenly"
+GITHUB_API_REPO_URL="https://api.github.com/repos/Screenly/Anthias" # nur für custom
+GITHUB_RELEASES_URL="https://github.com/Screenly/Anthias/releases" # nur für custom 
+GITHUB_RAW_URL="https://raw.githubusercontent.com/Screenly/Anthias"
+DOCKER_TAG="latest"
+UPGRADE_SCRIPT_PATH="${ANTHIAS_REPO_DIR}/bin/upgrade_containers.sh"
 
 INTRO_MESSAGE=(
     "Anthias requires a dedicated Raspberry Pi and an SD card."
     "You will not be able to use the regular desktop environment once installed."
+    ""
+    "When prompted for the version, you can choose between the following:"
+    "  - **latest:** Installs the latest version from the \`master\` branch."
+    "  - **experimental:** Installs the latest version from the \`experimental\` branch."
+    "  - **tag:** Installs a pinned version based on the tag name."
+    ""
+    "Take note that \`latest\` and \`experimental\` versions are rolling releases."
 )
 MANAGE_NETWORK_PROMPT=(
     "Would you like Anthias to manage the network for you?"
 )
 EXPERIMENTAL_PROMPT=(
     "Would you like to install the experimental version instead?"
+)
+VERSION_PROMPT=(
+    "Which version of Anthias would you like to install?"
+)
+VERSION_PROMPT_CHOICES=(
+    "latest"
+    "experimental"
+    "tag"
 )
 SYSTEM_UPGRADE_PROMPT=(
     "Would you like to perform a full system upgrade as well?"
@@ -41,18 +61,15 @@ TITLE_TEXT=$(cat << EOF
         | |_______________| |          |          |
         |___________==__==__|          |   pi@    |
         |___________________|___,---,__|__________|
-=======================================================================
+==================================================================
 
 EOF
 )
 
 # Install gum from Charm.sh.
 # Gum helps you write shell scripts more efficiently.
-# @TODO: Install a fixed version of Gum.
-function install_charm_gum() {
-    if [ -f /usr/bin/gum ]; then
-        gum style --foreground "#FFFF00" -- \
-            "Gum is already installed." | gum format
+function install_prerequisites() {
+    if [ -f /usr/bin/gum ] && [ -f /usr/bin/jq ]; then
         return
     fi
 
@@ -61,7 +78,8 @@ function install_charm_gum() {
         sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
     echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" \
         | sudo tee /etc/apt/sources.list.d/charm.list
-    sudo apt -y update && sudo apt -y install gum
+
+    sudo apt -y update && sudo apt -y install gum jq
 }
 
 function display_banner() {
@@ -121,7 +139,10 @@ function install_packages() {
     )
 
     if [ "$RASPBERRY_PI_OS_VERSION" -ge 12 ]; then
-        APT_INSTALL_ARGS+=("python3-full")
+        APT_INSTALL_ARGS+=(
+            "python3-dev"
+            "python3-full"
+        )
     else
         APT_INSTALL_ARGS+=(
             "python3"
@@ -144,21 +165,20 @@ function install_packages() {
 function install_ansible() {
     display_section "Install Ansible"
 
-    GITHUB_RAW_URL="https://raw.githubusercontent.com/Screenly/Anthias"
     REQUIREMENTS_URL="$GITHUB_RAW_URL/$BRANCH/requirements/requirements.host.txt"
     ANSIBLE_VERSION=$(curl -s $REQUIREMENTS_URL | grep ansible)
 
     SUDO_ARGS=()
 
     if python3 -c "import venv" &> /dev/null; then
-    gum format 'Module `venv` is detected. Activating virtual environment...'
+        gum format 'Module `venv` is detected. Activating virtual environment...'
 
-    echo
+        echo
 
-    python3 -m venv /home/${USER}/installer_venv
-    source /home/${USER}/installer_venv/bin/activate
+        python3 -m venv /home/${USER}/installer_venv
+        source /home/${USER}/installer_venv/bin/activate
 
-    SUDO_ARGS+=("--preserve-env" "env" "PATH=$PATH")
+        SUDO_ARGS+=("--preserve-env" "env" "PATH=$PATH")
     fi
 
     # @TODO: Remove me later. Cryptography 38.0.3 won't build at the moment.
@@ -175,13 +195,20 @@ function run_ansible_playbook() {
         -a "repo=$REPOSITORY dest=${ANTHIAS_REPO_DIR} version=${BRANCH} force=no"
     cd ${ANTHIAS_REPO_DIR}/ansible
 
-    sudo -E -u ${USER} ${SUDO_ARGS[@]} ansible-playbook site.yml "${ANSIBLE_PLAYBOOK_ARGS[@]}"
+    sudo -E -u ${USER} ${SUDO_ARGS[@]} \
+        ansible-playbook site.yml "${ANSIBLE_PLAYBOOK_ARGS[@]}"
 }
 
 function upgrade_docker_containers() {
     display_section "Initialize/Upgrade Docker Containers"
 
-    sudo -u ${USER} ${ANTHIAS_REPO_DIR}/bin/upgrade_containers.sh
+    wget -q \
+        "$GITHUB_RAW_URL/master/bin/upgrade_containers.sh" \
+        -O "$UPGRADE_SCRIPT_PATH"
+
+    sudo -u ${USER} \
+        DOCKER_TAG="${DOCKER_TAG}" \
+        "${UPGRADE_SCRIPT_PATH}"
 }
 
 function cleanup() {
@@ -250,8 +277,6 @@ function write_anthias_version() {
 
 function post_installation() {
     local POST_INSTALL_MESSAGE=()
-    local UPGRADE_SCRIPT_PATH="/home/${USER}/screenly/bin/upgrade_containers.sh"
-
 
     python3 "/home/root/screenly/update-docker/update.py"
 
@@ -279,24 +304,63 @@ function post_installation() {
         sudo reboot
 }
 
+function set_custom_version() {
+    BRANCH=$(
+        gum input \
+            --header "Enter the tag name you want to install" \
+    )
+
+    local STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+        "${GITHUB_API_REPO_URL}/git/refs/tags/$BRANCH")
+
+    if [ "$STATUS_CODE" -ne 200 ]; then
+        gum style "Invalid tag name." \
+            | gum format
+        echo
+        exit 1
+    fi
+
+    local DOCKER_TAG_FILE_URL="${GITHUB_RELEASES_URL}/download/${BRANCH}/docker-tag"
+    STATUS_CODE=$(curl -sL -o /dev/null -w "%{http_code}" \
+        "$DOCKER_TAG_FILE_URL")
+
+    if [ "$STATUS_CODE" -ne 200 ]; then
+        gum style "This version doesn't have a \`docker-tag\` file." \
+            | gum format
+        echo
+        exit 1
+    fi
+
+    DOCKER_TAG=$(curl -sL "$DOCKER_TAG_FILE_URL")
+}
+
 function main() {
-    install_charm_gum && clear
+    install_prerequisites && clear
 
     display_banner "${TITLE_TEXT}"
 
     gum format "${INTRO_MESSAGE[@]}"
     echo
     gum confirm "Do you still want to continue?" || exit 0
+    gum confirm "${MANAGE_NETWORK_PROMPT[@]}" && \
+        export MANAGE_NETWORK="Yes" || \
+        export MANAGE_NETWORK="No"
 
+    VERSION=$(
+        gum choose \
+            --header "${VERSION_PROMPT}" \
+            -- "${VERSION_PROMPT_CHOICES[@]}"
+    )
 
-    INSTALLER_NAME=$(gum input --header "Wer instaliert grade den Info-Screen" --placeholder "Gebe deinen Namen ein...")
+    if [ "$VERSION" == "latest" ]; then
+        BRANCH="master"
+    elif [ "$VERSION" == "experimental" ]; then
+        BRANCH="experimental"
+        DOCKER_TAG="experimental"
+    else
+        set_custom_version
+    fi
 
-
-    # gum confirm "${MANAGE_NETWORK_PROMPT[@]}" && \
-    #     export MANAGE_NETWORK="Yes" || \
-    #     export MANAGE_NETWORK="No"
-    export MANAGE_NETWORK="No"
-    # gum confirm "${EXPERIMENTAL_PROMPT[@]}" && BRANCH="experimental"
     gum confirm "${SYSTEM_UPGRADE_PROMPT[@]}" && {
         SYSTEM_UPGRADE="Yes"
         ANSIBLE_PLAYBOOK_ARGS=("--skip-tags" "system-upgrade")
@@ -304,16 +368,14 @@ function main() {
         SYSTEM_UPGRADE="No"
     }
 
-    display_section "Einstellungen"
-    gum format "**Mitarbeiter:**    ${INSTALLER_NAME}"
-    gum format "**Manage Network:** ${MANAGE_NETWORK}"
-    gum format "**System Upgrade:** ${SYSTEM_UPGRADE}"
-    gum format "**Branch:**         \`${BRANCH}\`"
-
+    display_section "User Input Summary"
+    gum format "**Manage Network:**     ${MANAGE_NETWORK}"
+    gum format "**Branch/Tag:**         \`${BRANCH}\`"
+    gum format "**System Upgrade:**     ${SYSTEM_UPGRADE}"
+    gum format "**Docker Tag Prefix:**  \`${DOCKER_TAG}\`"
 
     if [ ! -d "${ANTHIAS_REPO_DIR}" ]; then
-        mkdir "/home/root"
-        mkdir "/home/root/screenly"
+        mkdir "${ANTHIAS_REPO_DIR}"
     fi
 
     initialize_ansible
