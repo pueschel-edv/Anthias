@@ -26,10 +26,6 @@ from mimetypes import guess_type, guess_extension
 from os import getenv, makedirs, mkdir, path, remove, rename, statvfs, stat
 from urllib.parse import urlparse
 
-#### converter ####
-from PIL import Image
-###################
-
 from flask import (
     Flask,
     escape,
@@ -526,34 +522,6 @@ def remove_default_assets():
             if asset['asset_id'].startswith('default_'):
                 assets_helper.delete(conn, asset['asset_id'])
 
-
-def converter(uri, case):
-    # Öffne das Bild
-
-    if case == 1:
-        image = Image.open(uri)
-
-        image.thumbnail((1920, 1080))
-
-        background = Image.new('RGBA', (1920, 1080))
-
-        x = (1920 - image.width) // 2
-        y = (1080 - image.height) // 2
-        background.paste(image, (x, y))
-
-        background.save(f"{uri}.png")
-    else:
-        image = Image.open(uri)
-
-        image.thumbnail((1920, 1080))
-
-        background = Image.new('RGB', (1920, 1080))
-
-        x = (1920 - image.width) // 2
-        y = (1080 - image.height) // 2
-        background.paste(image, (x, y))
-
-        background.save(f"{uri}.jpg")
 
 def update_asset(asset, data):
     for key, value in list(data.items()):
@@ -1129,21 +1097,7 @@ class FileAsset(Resource):
         else:
             file_upload.save(file_path)
 
-        if file_type.split('/')[0] in ['image']:
-            
-            if ".png" in filename:
-                converter(file_path, 1)
-                new_file_path = f'{file_path}.png'
-                new_extension = ".png"
-            else:
-                converter(file_path, 2)
-                new_file_path = f'{file_path}.jpg'
-                new_extension = ".jpg"
-        else:
-            new_file_path = file_path
-            new_extension = guess_extension(file_type)
-            
-        return {'uri': new_file_path, 'ext': new_extension}
+        return {'uri': file_path, 'ext': guess_extension(file_type)}
 
 
 class PlaylistOrder(Resource):
@@ -1262,15 +1216,12 @@ class Info(Resource):
     method_decorators = [api_response, authorized]
 
     def get(self):
-        viewlog = "Not yet implemented"
-
         # Calculate disk space
         slash = statvfs("/")
         free_space = size(slash.f_bavail * slash.f_frsize)
         display_power = r.get('display_power')
 
         return {
-            'viewlog': viewlog,
             'loadavg': diagnostics.get_load_avg()['15 min'],
             'free_space': free_space,
             'display_power': display_power,
@@ -1475,8 +1426,9 @@ def settings_page():
             current_pass = request.form.get('current-password', '')
             auth_backend = request.form.get('auth_backend', '')
 
-            if auth_backend != (
-                settings['auth_backend'] and settings['auth_backend']
+            if (
+                auth_backend != settings['auth_backend']
+                and settings['auth_backend']
             ):
                 if not current_pass:
                     raise ValueError(
@@ -1577,8 +1529,6 @@ def settings_page():
 @app.route('/system-info')
 @authorized
 def system_info():
-    viewlog = ["Yet to be implemented"]
-
     loadavg = diagnostics.get_load_avg()['15 min']
     display_power = r.get('display_power')
 
@@ -1614,7 +1564,6 @@ def system_info():
     return template(
         'system-info.html',
         player_name=player_name,
-        viewlog=viewlog,
         loadavg=loadavg,
         free_space=free_space,
         uptime=system_uptime,
