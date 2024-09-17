@@ -9,13 +9,12 @@ server_files = [
     "/home/root/screenly/templates/header.html=/usr/src/app/templates/header.html",
     "/home/root/screenly/templates/footer.html=/usr/src/app/templates/footer.html",
     "/home/root/screenly/static/css/anthias.css=/usr/src/app/static/css/anthias.css",
-    "/home/root/screenly/static/img/logo-full-kinderland.png=/usr/src/app/static/img/logo-full-kinderland.png",
-    "/home/root/screenly/server.py=/usr/src/app/server.py",
+    "/home/root/screenly/static/img/logo-full-kinderland.png=/usr/src/app/static/img/logo-full-kinderland.png"
 ]
 
-viewer_files = [
-    "/home/root/screenly/viewer.py=/usr/src/app/viewer.py"
-]
+# viewer_files = [
+#     "/home/root/screenly/viewer.py=/usr/src/app/viewer.py"
+# ]
 
 
 # Zeilen in der Config die für die fehlerfreie Nutzung benötigt werden
@@ -100,24 +99,23 @@ for line in lines:
             except subprocess.CalledProcessError as e:
                 print(f"Datei konnte nicht in anthias-server kopiert werden {e}")
 
-    if "anthias-viewer" in line:
-        columns = line.split()
-        container_id = columns[0]
-        print(f"Container ID of anthias-viewer: {container_id}")
-        for file in viewer_files:
-            src, goal = file.split('=')
+    # if "anthias-viewer" in line:
+    #     columns = line.split()
+    #     container_id = columns[0]
+    #     print(f"Container ID of anthias-viewer: {container_id}")
+    #     for file in viewer_files:
+    #         src, goal = file.split('=')
 
-            command = ["docker", "cp", f"{src}", f"{container_id}:{goal}"]
-            try:
-                subprocess.check_output(command)
-                print("Datei erfolgreich in anthias-viewer kopiert")
-            except subprocess.CalledProcessError as e:
-                print(f"Datei konnte nicht in anthias-viewer kopiert werden {e}")
+    #         command = ["docker", "cp", f"{src}", f"{container_id}:{goal}"]
+    #         try:
+    #             subprocess.check_output(command)
+    #             print("Datei erfolgreich in anthias-viewer kopiert")
+    #         except subprocess.CalledProcessError as e:
+    #             print(f"Datei konnte nicht in anthias-viewer kopiert werden {e}")
 
 
             
 print("Update.py ist zuende!")
-
 
 
 
