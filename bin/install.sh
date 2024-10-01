@@ -12,7 +12,7 @@ ANTHIAS_REPO_DIR="/home/${USER}/screenly"
 GITHUB_API_REPO_URL="https://api.github.com/repos/Screenly/Anthias" # nur für custom
 GITHUB_RELEASES_URL="https://github.com/Screenly/Anthias/releases" # nur für custom 
 GITHUB_RAW_URL="https://raw.githubusercontent.com/Screenly/Anthias"
-DOCKER_TAG="latest"
+DOCKER_TAG="6ffd239"
 UPGRADE_SCRIPT_PATH="${ANTHIAS_REPO_DIR}/bin/upgrade_containers.sh"
 
 INTRO_MESSAGE=(
